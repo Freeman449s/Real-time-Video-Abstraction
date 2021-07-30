@@ -67,4 +67,33 @@ def bilateral(lab: np.ndarray, sigma_d, sigma_r, windowSize: int = 3) -> np.ndar
     nSegments = int(multiprocessing.cpu_count() ** 0.5)  # 计算一边上的分段数
     xSegmentLen = ret.shape[1] // nSegments
     ySegmentLen = ret.shape[0] // nSegments
+    if (nSegments == 1):
+        branch = BilateralBranch(lab, windowSize // 2, lab.shape[1] - windowSize // 2,
+                                 windowSize // 2, lab.shape[0] - windowSize // 2,
+                                 sigma_d, sigma_r, windowSize)
+        branch.start()
+    else:
+        # 计算各分支边界
+        xStartList = [windowSize // 2]
+        xEndList = []
+        yStartList = [windowSize // 2]
+        yEndList = []
+        for i in range(1, nSegments):
+            xStartList.append(i * xSegmentLen)
+            xEndList.append(i * xSegmentLen)
+            yStartList.append(i * ySegmentLen)
+            yEndList.append(i * ySegmentLen)
+        xEndList.append(ret.shape[1] - windowSize // 2)
+        yEndList.append(ret.shape[0] - windowSize // 2)
+
+        branchList = []
+        for i in range(0, nSegments):
+            for j in range(0, nSegments):
+                branch = BilateralBranch(lab, xStartList[i], xEndList[i],
+                                         yStartList[i], yEndList[i],
+                                         sigma_d, sigma_r, windowSize)
+                branchList.append(branch)
+                branch.start()
+        for i in range(0, len(branchList)):
+            branchList[i].join()
     return ret
