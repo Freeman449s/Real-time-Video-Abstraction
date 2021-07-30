@@ -2,6 +2,8 @@ from threading import Thread
 
 import math, multiprocessing, numpy as np
 
+MULTI_THREADING = True
+
 
 class BilateralBranch(Thread):
     """
@@ -54,6 +56,33 @@ def gaussian(t, sigma) -> float:
     return math.e ** (-t / (2 * (sigma ** 2)))
 
 
+def bilateralBranch(lab: np.ndarray, xStart: int, xEnd: int, yStart: int, yEnd: int,
+                    sigma_d, sigma_r, windowSize: int = 3):
+    """
+    使用多进程，为图像分支进行双边滤波。将直接在原图像上操作。\n
+    :param lab: 原始lab图像
+    :param xStart: 分支横坐标的下界
+    :param xEnd: 分支横坐标的上界（不包含）
+    :param yStart: 分支纵坐标的下界
+    :param yEnd: 分支纵坐标的上界（不包含）
+    :param sigma_d: 空间域标准差
+    :param sigma_r: 像素域标准差
+    :param windowSize: 窗口大小
+    :return:
+    """
+    for y in range(yStart, yEnd):
+        for x in range(xStart, xEnd):
+            weightSum = 0
+            pixelSum = 0
+            for j in range(y - windowSize // 2, y + windowSize // 2 + 1):
+                for i in range(x - windowSize // 2, x + self.windowSize // 2 + 1):
+                    weight = gaussian((j - y) ** 2 + (i - x) ** 2, self.sigma_d) * \
+                             gaussian((self.lab[j][i][0] - self.lab[y][x][0]) ** 2, self.sigma_r)
+                    weightSum += weight
+                    pixelSum += self.lab[j][i][0] * weight
+            self.lab[y][x][0] = pixelSum / weightSum
+
+
 def bilateral(lab: np.ndarray, sigma_d, sigma_r, windowSize: int = 3) -> np.ndarray:
     """
     建立图像的副本，然后双边滤波。\n
@@ -67,7 +96,7 @@ def bilateral(lab: np.ndarray, sigma_d, sigma_r, windowSize: int = 3) -> np.ndar
     nSegments = int(multiprocessing.cpu_count() ** 0.5)  # 计算一边上的分段数
     xSegmentLen = ret.shape[1] // nSegments
     ySegmentLen = ret.shape[0] // nSegments
-    if (nSegments == 1):
+    if ((not MULTI_THREADING) or nSegments == 1):
         branch = BilateralBranch(lab, windowSize // 2, lab.shape[1] - windowSize // 2,
                                  windowSize // 2, lab.shape[0] - windowSize // 2,
                                  sigma_d, sigma_r, windowSize)
@@ -90,7 +119,7 @@ def bilateral(lab: np.ndarray, sigma_d, sigma_r, windowSize: int = 3) -> np.ndar
         for i in range(0, nSegments):
             for j in range(0, nSegments):
                 branch = BilateralBranch(lab, xStartList[i], xEndList[i],
-                                         yStartList[i], yEndList[i],
+                                         yStartList[j], yEndList[j],
                                          sigma_d, sigma_r, windowSize)
                 branchList.append(branch)
                 branch.start()
