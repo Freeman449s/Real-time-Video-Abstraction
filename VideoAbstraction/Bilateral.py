@@ -2,7 +2,9 @@
 双边滤波
 """
 
-import math, multiprocessing, numpy as np
+import math, multiprocessing
+import numpy as np
+
 from Util import gaussian
 
 MULTI_THREADING = True

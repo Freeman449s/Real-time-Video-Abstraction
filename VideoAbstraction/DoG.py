@@ -2,18 +2,20 @@
 高斯差分边缘检测
 """
 
-import math, numpy as np
+import math
+import numpy as np
+
 from Util import gaussian
 
 TAU = 0.98
 PHI_E = 5  # 控制阶跃函数的梯度
-SIGMA_E = 0.7  # 控制边缘检测空间尺度
 
 
-def DoG(lab: np.ndarray, windowSize: int = 5) -> np.ndarray:
+def DoG(lab: np.ndarray, sigma_e, windowSize: int = 5) -> np.ndarray:
     """
     DoG边缘检测，返回边缘图\n
     :param lab: lab图像
+    :param sigma_e: 控制边缘检测空间尺度
     :param windowSize: 高斯滤波的窗口大小，默认为5
     :return: lab形式的边缘图
     """
@@ -21,8 +23,8 @@ def DoG(lab: np.ndarray, windowSize: int = 5) -> np.ndarray:
     edge[:, :, 0] = 100
     for y in range(windowSize // 2, lab.shape[0] - windowSize // 2):
         for x in range(windowSize // 2, lab.shape[1] - windowSize // 2):
-            S_sigma_e = blurFunc(lab, x, y, SIGMA_E, windowSize)
-            S_sigma_r = blurFunc(lab, x, y, SIGMA_E * 1.264911, windowSize)
+            S_sigma_e = blurFunc(lab, x, y, sigma_e, windowSize)
+            S_sigma_r = blurFunc(lab, x, y, sigma_e * 1.264911, windowSize)
             if (S_sigma_e - TAU * S_sigma_r > 0):
                 D = 1
             else:
@@ -58,6 +60,6 @@ def overlayEdges(lab: np.ndarray, edge: np.ndarray) -> np.ndarray:
     ret = lab.copy()
     for y in range(0, ret.shape[0]):
         for x in range(0, ret.shape[1]):
-            if (edge[y][x][0] < 50):  # 此处检测出边缘
+            if (edge[y][x][0] < 30):  # 此处检测出边缘
                 ret[y][x][0] = edge[y][x][0]
     return ret
