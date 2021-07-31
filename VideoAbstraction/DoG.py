@@ -2,27 +2,70 @@
 高斯差分边缘检测
 """
 
-import math
+import math, multiprocessing
 import numpy as np
 
 from Util import gaussian
+from Parallel import Branch, calcBoundaries
 
 TAU = 0.98
 PHI_E = 5  # 控制阶跃函数的梯度
 
 
-def DoG(lab: np.ndarray, sigma_e, windowSize: int = 5) -> np.ndarray:
+def DoG(lab: np.ndarray, sigma_e, windowSize: int = 5, multiProcess: bool = True) -> np.ndarray:
     """
     DoG边缘检测，返回边缘图\n
     :param lab: lab图像
     :param sigma_e: 控制边缘检测空间尺度
     :param windowSize: 高斯滤波的窗口大小，默认为5
+    :param multiProcess: 是否使用多进程加速
     :return: lab形式的边缘图
+    """
+    if not multiProcess:
+        return branchDoG(lab, windowSize // 2, lab.shape[1] - windowSize // 2,
+                         windowSize // 2, lab.shape[0] - windowSize // 2, sigma_e, windowSize)
+    else:
+        edge = np.zeros(lab.shape)
+        edge[:, :, 0] = 100
+        nSegments = int(multiprocessing.cpu_count() ** 0.5) + 1
+        xStartList, xEndList, yStartList, yEndList = calcBoundaries(edge.shape, nSegments, windowSize)
+
+        pool = multiprocessing.Pool()
+        manager = multiprocessing.Manager()
+        queue = manager.Queue()
+        for i in range(0, nSegments):
+            for j in range(0, nSegments):
+                pool.apply_async(branchDoG,
+                                 args=(lab, xStartList[i], xEndList[i], yStartList[j], yEndList[j],
+                                       sigma_e, windowSize, queue))
+        pool.close()
+        pool.join()
+
+        while not queue.empty():
+            branch = queue.get()
+            edge[branch.yStart:branch.yEnd, branch.xStart:branch.xEnd] = branch.lab
+
+        return edge
+
+
+def branchDoG(lab: np.ndarray, xStart: int, xEnd: int, yStart: int, yEnd: int, sigma_e, windowSize: int = 5,
+              queue=None) -> np.ndarray:
+    """
+    使用多进程，对图像分支进行DoG边缘检测。结果通过队列返回（如有）。
+    :param lab: lab图像
+    :param xStart: 分支横坐标的下界
+    :param xEnd: 分支横坐标的上界（不包含）
+    :param yStart: 分支纵坐标的下界
+    :param yEnd: 分支纵坐标的上界（不包含）
+    :param sigma_e: 控制边缘检测空间尺度
+    :param windowSize: 窗口大小，默认为5
+    :param queue: 由服务进程管理的队列，用于向主进程传递对象
+    :return: 边缘图像
     """
     edge = np.zeros(lab.shape)
     edge[:, :, 0] = 100
-    for y in range(windowSize // 2, lab.shape[0] - windowSize // 2):
-        for x in range(windowSize // 2, lab.shape[1] - windowSize // 2):
+    for y in range(yStart, yEnd):
+        for x in range(xStart, xEnd):
             S_sigma_e = blurFunc(lab, x, y, sigma_e, windowSize)
             S_sigma_r = blurFunc(lab, x, y, sigma_e * 1.264911, windowSize)
             if (S_sigma_e - TAU * S_sigma_r > 0):
@@ -30,6 +73,8 @@ def DoG(lab: np.ndarray, sigma_e, windowSize: int = 5) -> np.ndarray:
             else:
                 D = 1 + math.tanh(PHI_E * (S_sigma_e - TAU * S_sigma_r))
             edge[y][x][0] = D * 100
+    if queue:
+        queue.put(Branch(edge[yStart:yEnd, xStart:xEnd], xStart, xEnd, yStart, yEnd))
     return edge
 
 
@@ -60,6 +105,5 @@ def overlayEdges(lab: np.ndarray, edge: np.ndarray) -> np.ndarray:
     ret = lab.copy()
     for y in range(0, ret.shape[0]):
         for x in range(0, ret.shape[1]):
-            if (edge[y][x][0] < 30):  # 此处检测出边缘
-                ret[y][x][0] = edge[y][x][0]
+            ret[y][x][0] = min(ret[y][x][0], edge[y][x][0])
     return ret

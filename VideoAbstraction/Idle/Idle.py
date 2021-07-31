@@ -3,7 +3,10 @@
 """
 
 from threading import Thread
-import math, numpy as np
+from enum import Enum
+
+import math
+import numpy as np
 
 
 class BilateralBranch(Thread):
@@ -55,6 +58,7 @@ def gaussian(t, sigma) -> float:
     :return: 高斯函数值
     """
     return math.e ** (-t / (2 * (sigma ** 2)))
+
 
 class ConversionType(Enum):
     UByte2Classic = 0
