@@ -55,3 +55,31 @@ def gaussian(t, sigma) -> float:
     :return: 高斯函数值
     """
     return math.e ** (-t / (2 * (sigma ** 2)))
+
+class ConversionType(Enum):
+    UByte2Classic = 0
+    Classic2UByte = 1
+
+
+def valueRangeConversion(lab: np.ndarray, conversionType: ConversionType) -> np.ndarray:
+    """
+    将LAB从[0,255]转到经典取值范围，即L:[0,100]，(a,b):[-127,127]；或从经典取值范围转回uint8范围\n
+    :param lab: LAB图像
+    :param conversionType: 转换类型
+    :return: 转换过取值范围的LAB图像
+    """
+    if conversionType == ConversionType.UByte2Classic:
+        ret = lab.astype(np.float64)
+        for y in range(0, ret.shape[0]):
+            for x in range(0, ret.shape[1]):
+                ret[y][x][0] = ret[y][x][0] / 255 * 100
+                ret[y][x][1] = ret[y][x][1] - 128
+                ret[y][x][2] = ret[y][x][2] - 128
+    else:
+        ret = np.zeros(lab.shape, np.uint8)
+        for y in range(0, ret.shape[0]):
+            for x in range(0, ret.shape[1]):
+                ret[y][x][0] = lab[y][x][0] / 100 * 255
+                ret[y][x][1] = lab[y][x][1] + 128
+                ret[y][x][2] = lab[y][x][2] + 128
+    return ret

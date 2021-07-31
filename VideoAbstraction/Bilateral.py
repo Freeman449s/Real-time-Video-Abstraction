@@ -3,8 +3,9 @@
 """
 
 import math, multiprocessing, numpy as np
+from Util import gaussian
 
-MULTI_THREADING = False
+MULTI_THREADING = True
 
 
 class Branch:
@@ -20,18 +21,8 @@ class Branch:
         self.yEnd = yEnd
 
 
-def gaussian(t, sigma) -> float:
-    """
-    期望为0的高斯函数。由于系数部分会在取后续平均时直接略去，因而只计算e的乘方。\n
-    :param t: e的乘方的次数的分子
-    :param sigma: 高斯函数的标准差
-    :return: 高斯函数值
-    """
-    return math.e ** (-t / (2 * (sigma ** 2)))
-
-
 def branchFilter(lab: np.ndarray, xStart: int, xEnd: int, yStart: int, yEnd: int,
-                 sigma_d, sigma_r, windowSize: int = 3, queue=None) -> None:
+                 sigma_d, sigma_r, windowSize: int = 5, queue=None) -> None:
     """
     使用多进程，为图像分支进行双边滤波。将直接在原图像上操作。\n
     :param lab: lab图像
@@ -41,7 +32,7 @@ def branchFilter(lab: np.ndarray, xStart: int, xEnd: int, yStart: int, yEnd: int
     :param yEnd: 分支纵坐标的上界（不包含）
     :param sigma_d: 空间域标准差
     :param sigma_r: 像素域标准差
-    :param windowSize: 窗口大小
+    :param windowSize: 窗口大小，默认为5
     :param queue: 由服务进程管理的队列，用于向主进程传递对象
     :return: 无返回值
     """
@@ -60,13 +51,13 @@ def branchFilter(lab: np.ndarray, xStart: int, xEnd: int, yStart: int, yEnd: int
         queue.put(Branch(lab[yStart:yEnd, xStart:xEnd], xStart, xEnd, yStart, yEnd))  # 注意ndarray的切片方式[a:b,c:d]
 
 
-def bilateral(lab: np.ndarray, sigma_d, sigma_r, windowSize: int = 3) -> np.ndarray:
+def bilateral(lab: np.ndarray, sigma_d, sigma_r, windowSize: int = 5) -> np.ndarray:
     """
     建立图像的副本，然后双边滤波。\n
     :param lab: lab图像
     :param sigma_d: 空间域标准差
     :param sigma_r: 像素域标准差
-    :param windowSize: 窗口大小
+    :param windowSize: 窗口大小，默认为5
     :return: 经双边滤波的图像
     """
     ret = lab.copy()
