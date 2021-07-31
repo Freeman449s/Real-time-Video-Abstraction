@@ -67,3 +67,4 @@ fabric.properties
 
 venv
 .idea
+__pycache__

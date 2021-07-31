@@ -1,3 +1,7 @@
+"""
+主模块，定义程序的入口
+"""
+
 import math, Bilateral, cv2 as cv, numpy as np
 from enum import Enum
 
@@ -50,4 +54,5 @@ def valueRangeConversion(lab: np.ndarray, conversionType: ConversionType) -> np.
     return ret
 
 
-main()
+if __name__ == '__main__':
+    main()

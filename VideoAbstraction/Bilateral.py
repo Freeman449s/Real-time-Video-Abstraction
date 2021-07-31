@@ -1,49 +1,23 @@
-from threading import Thread
+"""
+双边滤波
+"""
 
 import math, multiprocessing, numpy as np
 
-MULTI_THREADING = True
+MULTI_THREADING = False
 
 
-class BilateralBranch(Thread):
+class Branch:
     """
-    对图像的一个分支做双边滤波
+    图像分支。用于子进程向主进程传递数据。
     """
 
-    def __init__(self, lab: np.ndarray, xStart: int, xEnd: int, yStart: int, yEnd: int, sigma_d, sigma_r,
-                 windowSize: int = 3):
-        """
-        构造函数\n
-        :param lab: lab图像，将直接对此图像做修改
-        :param xStart: 分支横坐标的下界
-        :param xEnd: 分支横坐标的上界（不包含）
-        :param yStart: 分支纵坐标的下界
-        :param yEnd: 分支纵坐标的上界（不包含）
-        :param sigma_d: 空间域标准差
-        :param sigma_r: 像素域标准差
-        """
-        Thread.__init__(self)
+    def __init__(self, lab: np.ndarray, xStart: int, xEnd: int, yStart: int, yEnd: int):
         self.lab = lab
         self.xStart = xStart
         self.xEnd = xEnd
         self.yStart = yStart
         self.yEnd = yEnd
-        self.sigma_d = sigma_d
-        self.sigma_r = sigma_r
-        self.windowSize = windowSize
-
-    def run(self):
-        for y in range(self.yStart, self.yEnd):
-            for x in range(self.xStart, self.xEnd):
-                weightSum = 0
-                pixelSum = 0
-                for j in range(y - self.windowSize // 2, y + self.windowSize // 2 + 1):
-                    for i in range(x - self.windowSize // 2, x + self.windowSize // 2 + 1):
-                        weight = gaussian((j - y) ** 2 + (i - x) ** 2, self.sigma_d) * \
-                                 gaussian((self.lab[j][i][0] - self.lab[y][x][0]) ** 2, self.sigma_r)
-                        weightSum += weight
-                        pixelSum += self.lab[j][i][0] * weight
-                self.lab[y][x][0] = pixelSum / weightSum
 
 
 def gaussian(t, sigma) -> float:
@@ -56,11 +30,11 @@ def gaussian(t, sigma) -> float:
     return math.e ** (-t / (2 * (sigma ** 2)))
 
 
-def bilateralBranch(lab: np.ndarray, xStart: int, xEnd: int, yStart: int, yEnd: int,
-                    sigma_d, sigma_r, windowSize: int = 3):
+def branchFilter(lab: np.ndarray, xStart: int, xEnd: int, yStart: int, yEnd: int,
+                 sigma_d, sigma_r, windowSize: int = 3, queue=None) -> None:
     """
     使用多进程，为图像分支进行双边滤波。将直接在原图像上操作。\n
-    :param lab: 原始lab图像
+    :param lab: lab图像
     :param xStart: 分支横坐标的下界
     :param xEnd: 分支横坐标的上界（不包含）
     :param yStart: 分支纵坐标的下界
@@ -68,19 +42,22 @@ def bilateralBranch(lab: np.ndarray, xStart: int, xEnd: int, yStart: int, yEnd: 
     :param sigma_d: 空间域标准差
     :param sigma_r: 像素域标准差
     :param windowSize: 窗口大小
-    :return:
+    :param queue: 由服务进程管理的队列，用于向主进程传递对象
+    :return: 无返回值
     """
     for y in range(yStart, yEnd):
         for x in range(xStart, xEnd):
             weightSum = 0
             pixelSum = 0
             for j in range(y - windowSize // 2, y + windowSize // 2 + 1):
-                for i in range(x - windowSize // 2, x + self.windowSize // 2 + 1):
-                    weight = gaussian((j - y) ** 2 + (i - x) ** 2, self.sigma_d) * \
-                             gaussian((self.lab[j][i][0] - self.lab[y][x][0]) ** 2, self.sigma_r)
+                for i in range(x - windowSize // 2, x + windowSize // 2 + 1):
+                    weight = gaussian((j - y) ** 2 + (i - x) ** 2, sigma_d) * \
+                             gaussian((lab[j][i][0] - lab[y][x][0]) ** 2, sigma_r)
                     weightSum += weight
-                    pixelSum += self.lab[j][i][0] * weight
-            self.lab[y][x][0] = pixelSum / weightSum
+                    pixelSum += lab[j][i][0] * weight
+            lab[y][x][0] = pixelSum / weightSum
+    if queue:
+        queue.put(Branch(lab[yStart:yEnd, xStart:xEnd], xStart, xEnd, yStart, yEnd))  # 注意ndarray的切片方式[a:b,c:d]
 
 
 def bilateral(lab: np.ndarray, sigma_d, sigma_r, windowSize: int = 3) -> np.ndarray:
@@ -93,15 +70,13 @@ def bilateral(lab: np.ndarray, sigma_d, sigma_r, windowSize: int = 3) -> np.ndar
     :return: 经双边滤波的图像
     """
     ret = lab.copy()
-    nSegments = int(multiprocessing.cpu_count() ** 0.5)  # 计算一边上的分段数
-    xSegmentLen = ret.shape[1] // nSegments
-    ySegmentLen = ret.shape[0] // nSegments
-    if ((not MULTI_THREADING) or nSegments == 1):
-        branch = BilateralBranch(lab, windowSize // 2, lab.shape[1] - windowSize // 2,
-                                 windowSize // 2, lab.shape[0] - windowSize // 2,
-                                 sigma_d, sigma_r, windowSize)
-        branch.start()
+    if (not MULTI_THREADING):
+        branchFilter(ret, windowSize // 2, ret.shape[1] - windowSize // 2,
+                     windowSize // 2, ret.shape[0] - windowSize // 2, sigma_d, sigma_r, windowSize)
     else:
+        nSegments = int(multiprocessing.cpu_count() ** 0.5) + 1  # 计算一边上的分段数
+        xSegmentLen = ret.shape[1] // nSegments
+        ySegmentLen = ret.shape[0] // nSegments
         # 计算各分支边界
         xStartList = [windowSize // 2]
         xEndList = []
@@ -115,14 +90,18 @@ def bilateral(lab: np.ndarray, sigma_d, sigma_r, windowSize: int = 3) -> np.ndar
         xEndList.append(ret.shape[1] - windowSize // 2)
         yEndList.append(ret.shape[0] - windowSize // 2)
 
-        branchList = []
+        pool = multiprocessing.Pool()
+        manager = multiprocessing.Manager()
+        queue = manager.Queue()
         for i in range(0, nSegments):
             for j in range(0, nSegments):
-                branch = BilateralBranch(lab, xStartList[i], xEndList[i],
-                                         yStartList[j], yEndList[j],
-                                         sigma_d, sigma_r, windowSize)
-                branchList.append(branch)
-                branch.start()
-        for i in range(0, len(branchList)):
-            branchList[i].join()
+                pool.apply_async(branchFilter,
+                                 args=(ret, xStartList[i], xEndList[i], yStartList[j], yEndList[j],
+                                       sigma_d, sigma_r, windowSize, queue))
+        pool.close()
+        pool.join()
+        # 将队列中的数据复制回ret
+        while not queue.empty():
+            branch = queue.get()
+            ret[branch.yStart:branch.yEnd, branch.xStart:branch.xEnd] = branch.lab
     return ret
