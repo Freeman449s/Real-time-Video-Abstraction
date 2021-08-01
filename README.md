@@ -13,3 +13,13 @@ SIGGRAPH 2006论文的Python实现。
 3. DoG边缘检测
 4. 亮度通道量化
 5. 边缘叠加
+
+A Python implementation of the SIGGRAPH 2006 paper.
+
+The procedure of the algorithm is as follows:
+
+1. Convert the input image from RGB color space to Lab.
+2. Bilateral filtering.
+3. DoG edge detection.
+4. Quantization of L channel.
+5. Overlay the edges onto the quantized image.
