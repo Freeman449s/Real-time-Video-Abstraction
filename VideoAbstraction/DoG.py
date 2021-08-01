@@ -7,12 +7,14 @@ import numpy as np
 
 from Util import gaussian
 from Parallel import Branch, calcBoundaries
+from Exception import IllegalArgumentException
+from scipy import signal
 
 TAU = 0.98
 PHI_E = 5  # 控制阶跃函数的梯度
 
 
-def DoG(lab: np.ndarray, sigma_e, windowSize: int = 5, multiProcess: bool = True) -> np.ndarray:
+def DoG(lab: np.ndarray, sigma_e: float, windowSize: int = 5, multiProcess: bool = True) -> np.ndarray:
     """
     DoG边缘检测，返回边缘图\n
     :param lab: lab图像
@@ -48,10 +50,10 @@ def DoG(lab: np.ndarray, sigma_e, windowSize: int = 5, multiProcess: bool = True
         return edge
 
 
-def branchDoG(lab: np.ndarray, xStart: int, xEnd: int, yStart: int, yEnd: int, sigma_e, windowSize: int = 5,
+def branchDoG(lab: np.ndarray, xStart: int, xEnd: int, yStart: int, yEnd: int, sigma_e: float, windowSize: int = 5,
               queue=None) -> np.ndarray:
     """
-    使用多进程，对图像分支进行DoG边缘检测。结果通过队列返回（如有）。
+    使用多进程，对图像分支进行DoG边缘检测。结果通过队列返回（如有）。\n
     :param lab: lab图像
     :param xStart: 分支横坐标的下界
     :param xEnd: 分支横坐标的上界（不包含）
@@ -67,7 +69,7 @@ def branchDoG(lab: np.ndarray, xStart: int, xEnd: int, yStart: int, yEnd: int, s
     for y in range(yStart, yEnd):
         for x in range(xStart, xEnd):
             S_sigma_e = blurFunc(lab, x, y, sigma_e, windowSize)
-            S_sigma_r = blurFunc(lab, x, y, sigma_e * 1.264911, windowSize)
+            S_sigma_r = blurFunc(lab, x, y, sigma_e * 1.264911, windowSize)  # 1.264911 = 1.6^(1/2)
             if (S_sigma_e - TAU * S_sigma_r > 0):
                 D = 1
             else:
@@ -78,7 +80,7 @@ def branchDoG(lab: np.ndarray, xStart: int, xEnd: int, yStart: int, yEnd: int, s
     return edge
 
 
-def blurFunc(lab: np.ndarray, x: int, y: int, sigma_e, windowSize: int = 5) -> float:
+def blurFunc(lab: np.ndarray, x: int, y: int, sigma_e: float, windowSize: int = 5) -> float:
     """
     模糊函数S\n
     :param lab: lab图像
@@ -107,3 +109,46 @@ def overlayEdges(lab: np.ndarray, edge: np.ndarray) -> np.ndarray:
         for x in range(0, ret.shape[1]):
             ret[y][x][0] = min(ret[y][x][0], edge[y][x][0])
     return ret
+
+
+def DoGUsingScipy(lab: np.ndarray, sigma_e: float, windowSize: int = 5) -> np.ndarray:
+    """
+    使用scipy.signal.convolve()计算DoG\n
+    :param lab: lab图像
+    :param sigma_e: 控制边缘检测空间尺度
+    :param windowSize: 窗口大小，默认为5
+    :return: 边缘图像
+    """
+    conSigmaE = signal.convolve(lab[:, :, 0], calcKernel(sigma_e, windowSize), mode="same")  # mode取"same"时，输出与in1尺寸相同
+    conSigmaR = signal.convolve(lab[:, :, 0], calcKernel(sigma_e * 1.264911, windowSize),
+                                mode="same")  # 1.264911 = 1.6^(1/2)
+
+    edge = np.zeros(lab.shape)
+    edge[:, :, 0] = 100
+    for y in range(0, edge.shape[0]):
+        for x in range(0, edge.shape[1]):
+            S_sigma_e = conSigmaE[y][x]
+            S_sigma_r = conSigmaR[y][x]
+            if (S_sigma_e - TAU * S_sigma_r > 0):
+                D = 1
+            else:
+                D = 1 + math.tanh(PHI_E * (S_sigma_e - TAU * S_sigma_r))
+            edge[y][x][0] = D * 100
+    return edge
+
+
+def calcKernel(sigma_e: float, windowSize: int = 5) -> np.ndarray:
+    """
+    计算DoG边缘检测的卷积核\n
+    :param windowSize: 窗口尺寸，默认为5
+    :param sigma_e: 控制边缘检测空间尺度
+    :return: 卷积核
+    """
+    if (windowSize // 2 == 0):
+        raise IllegalArgumentException("Window size must be odd.")
+    kernel = np.zeros((windowSize, windowSize))
+    for y in range(-windowSize // 2, windowSize // 2 + 1):
+        for x in range(-windowSize // 2, windowSize // 2 + 1):
+            kernel[y + windowSize // 2][x + windowSize // 2] = gaussian((y ** 2 + x ** 2), sigma_e)
+    kernel /= (2 * math.pi * (sigma_e ** 2))
+    return kernel

@@ -68,3 +68,6 @@ fabric.properties
 venv
 .idea
 __pycache__
+
+测试结果/Good
+测试结果/Bad
